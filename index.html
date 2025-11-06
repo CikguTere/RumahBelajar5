@@ -86,7 +86,7 @@
         // Jika Anda menghosting website ini di luar lingkungan Canvas, 
         // pastikan Anda memasukkan konfigurasi Firebase project Anda di sini.
         const HARDCODED_FIREBASE_CONFIG = {
-            apiKey: "AIzaSyDF_ZjkrlI2Q_sg7mCMODi969sADzEqdh0", // <-- PENTING! Ganti ini.
+            apiKey: "AIzaSyD8mRXy6oyNpHQ6uJ_xX8YS8spWYU0wXTg", // <-- PENTING! Ganti ini.
             authDomain: "rumah-belajar-kls-5.firebaseapp.com",
             projectId: "rumah-belajar-kls-5", // <-- PENTING! Ganti ini.
             storageBucket: "rumah-belajar-kls-5.firebasestorage.app",
@@ -114,12 +114,8 @@
         }
         
         // Expose the determined API Key (either Canvas or Hardcoded) globally for the chat function
-        window.FIREBASE_API_KEY = isConfigValid ? firebaseConfig.apiKey : "";
-
-        // PENTING: KUNCI KHUSUS CHATBOT (GEMINI API)
-        // Jika API Key Firebase Anda tidak diizinkan untuk Gemini API, gunakan kunci khusus di sini.
-        // Ganti "GANTI_DENGAN_KUNCI_GEMINI_ANDA" dengan Kunci Gemini API yang baru Anda buat.
-        window.GEMINI_API_KEY_CHAT = "GANTI_DENGAN_KUNCI_GEMINI_ANDA";
+        // PENTING: Gunakan API Key Firebase yang sama untuk otentikasi Gemini API
+        window.GEMINI_API_KEY = isConfigValid ? firebaseConfig.apiKey : "";
 
 
         // Handle Authentication
@@ -1047,16 +1043,11 @@
             const message = chatInput.value.trim();
             if (!message) return;
 
-            // Determine which API key to use (dedicated key is mandatory)
-            const apiKeyToUse = window.GEMINI_API_KEY_CHAT;
-
-            // --- FIX: Strict check for dedicated Gemini Key ---
-            if (!apiKeyToUse || apiKeyToUse === "GANTI_DENGAN_KUNCI_GEMINI_ANDA") {
-                window.showModal('Chat Gagal!', 'Cikgu Tere tidak dapat dihubungi. Anda HARUS mengganti placeholder "GANTI_DENGAN_KUNCI_GEMINI_ANDA" dengan Kunci Gemini API yang valid dari Google AI Studio untuk mengaktifkan fitur ini.', 'error');
+            // Check if API key is available
+            if (!window.GEMINI_API_KEY) {
+                window.showModal('Chat Gagal!', 'Cikgu Tere tidak dapat dihubungi. Pastikan Anda telah memasukkan `apiKey` yang benar di bagian konfigurasi Firebase untuk mengaktifkan layanan Chat AI.', 'error');
                 return;
             }
-            // --- END FIX ---
-
 
             appendMessage('user', message);
             CHAT_HISTORY.push({ role: "user", parts: [{ text: message }] });
@@ -1068,7 +1059,7 @@
             appendMessage('bot', '', true);
 
             try {
-                const responseText = await callGeminiAPI(message, apiKeyToUse);
+                const responseText = await callGeminiAPI(message);
                 
                 // Remove waiting message
                 const waitingBubble = document.getElementById('waiting-bubble');
@@ -1086,17 +1077,6 @@
                 
             } catch (error) {
                 console.error("Gemini API Error:", error);
-                
-                // --- FIX: Explicit 403 instruction in modal ---
-                let modalMessage = "Maaf, Cikgu Tere sedang sibuk atau mengalami kendala koneksi. Coba lagi sebentar ya!";
-                if (error.message.includes('403') || error.message.includes('PERMISSION_DENIED')) {
-                    modalMessage = "Akses AI Ditolak (403). Kunci Gemini API yang Anda gunakan tidak memiliki izin. Mohon pastikan Kunci yang Anda masukkan sudah benar dan diaktifkan untuk Generative Language API di konsol Google Anda.";
-                }
-                
-                // Show failure to user using modal
-                window.showModal('Chat Gagal!', modalMessage, 'error');
-                // --- END FIX ---
-
                 const waitingBubble = document.getElementById('waiting-bubble');
                  if (waitingBubble) {
                     waitingBubble.textContent = "Maaf, Cikgu Tere sedang sibuk atau mengalami kendala koneksi. Coba lagi sebentar ya!";
@@ -1112,7 +1092,9 @@
             }
         };
 
-        const callGeminiAPI = async (userQuery, apiKey, retryCount = 0) => {
+        const callGeminiAPI = async (userQuery, retryCount = 0) => {
+            // Menggunakan API Key yang diekspos secara global
+            const apiKey = window.GEMINI_API_KEY || "";
             const apiUrl = GEMINI_API_URL + apiKey;
             
             // Limit history to last 10 messages for context
@@ -1136,10 +1118,11 @@
                 if (response.status === 429 && retryCount < 3) {
                     const delay = Math.pow(2, retryCount) * 1000;
                     await new Promise(resolve => setTimeout(resolve, delay));
-                    return callGeminiAPI(userQuery, apiKey, retryCount + 1);
+                    return callGeminiAPI(userQuery, retryCount + 1);
                 }
 
                 if (!response.ok) {
+                    // Cek jika response 400 (Bad Request) atau 401/403 (Auth/Permission)
                     const errorJson = await response.json();
                     console.error("API Response Error:", errorJson);
                     throw new Error(`API call failed with status: ${response.status} - ${errorJson.error?.message || 'Unknown error'}`);
